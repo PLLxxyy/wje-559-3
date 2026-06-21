@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, Repository } from 'typeorm';
-import { ServiceStatus, UserRole } from '../constants/enums';
+import { OverdueStatus, ServiceStatus, UserRole } from '../constants/enums';
 import { ServiceRequest } from '../models/service-request.entity';
 import { RequestUser } from '../types/request-with-user';
 import { generateRequestNo } from '../utils/id-generator';
@@ -29,18 +29,25 @@ export class ServicesService {
     const where = this.scopeWhere(user);
     if (query.status) where.status = query.status;
     const [items, total] = await this.requests.findAndCount({ where, order: { createdAt: 'DESC' }, skip, take: limit });
-    return pageResult(items, total, page, limit);
+    const itemsWithOverdue = items.map(item => ({
+      ...item,
+      overdueStatus: this.calculateOverdueStatus(item),
+    }));
+    return pageResult(itemsWithOverdue, total, page, limit);
   }
 
   async detail(user: RequestUser, id: number) {
     const request = await this.requests.findOne({ where: { id } });
     if (!request) throw new NotFoundException('Service request not found');
     this.assertVisible(user, request);
-    return request;
+    return {
+      ...request,
+      overdueStatus: this.calculateOverdueStatus(request),
+    };
   }
 
   async accept(user: RequestUser, id: number, dueDate: string) {
-    const request = await this.detail(user, id);
+    const request = await this.findOneEntity(user, id);
     request.status = ServiceStatus.ACCEPTED;
     request.handlerId = user.id;
     request.dueDate = new Date(dueDate);
@@ -48,7 +55,7 @@ export class ServicesService {
   }
 
   async complete(user: RequestUser, id: number) {
-    const request = await this.detail(user, id);
+    const request = await this.findOneEntity(user, id);
     request.status = ServiceStatus.COMPLETED;
     request.handlerId = request.handlerId ?? user.id;
     request.completedAt = new Date();
@@ -56,7 +63,7 @@ export class ServicesService {
   }
 
   async reject(user: RequestUser, id: number, reason: string) {
-    const request = await this.detail(user, id);
+    const request = await this.findOneEntity(user, id);
     request.status = ServiceStatus.REJECTED;
     request.handlerId = request.handlerId ?? user.id;
     request.rejectionReason = reason;
@@ -64,11 +71,18 @@ export class ServicesService {
   }
 
   async rate(user: RequestUser, id: number, rating: number, ratingComment?: string) {
-    const request = await this.detail(user, id);
+    const request = await this.findOneEntity(user, id);
     if (request.requesterId !== user.id) throw new ForbiddenException('Can only rate own request');
     request.rating = rating;
     request.ratingComment = ratingComment ?? null;
     return this.requests.save(request);
+  }
+
+  private async findOneEntity(user: RequestUser, id: number): Promise<ServiceRequest> {
+    const request = await this.requests.findOne({ where: { id } });
+    if (!request) throw new NotFoundException('Service request not found');
+    this.assertVisible(user, request);
+    return request;
   }
 
   private scopeWhere(user: RequestUser): FindOptionsWhere<ServiceRequest> {
@@ -80,5 +94,53 @@ export class ServicesService {
   private assertVisible(user: RequestUser, request: ServiceRequest) {
     if (user.role === UserRole.RESIDENT && request.requesterId !== user.id) throw new ForbiddenException('Out of data scope');
     if (user.role === UserRole.GRID_WORKER && request.handlerId && request.handlerId !== user.id) throw new ForbiddenException('Out of data scope');
+  }
+
+  calculateOverdueStatus(request: ServiceRequest): OverdueStatus {
+    if (request.status === ServiceStatus.COMPLETED || request.status === ServiceStatus.REJECTED) {
+      return OverdueStatus.NORMAL;
+    }
+    if (!request.dueDate) return OverdueStatus.NORMAL;
+
+    const now = new Date();
+    const dueDate = new Date(request.dueDate);
+    const diffMs = dueDate.getTime() - now.getTime();
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+    if (diffDays < 0) return OverdueStatus.OVERDUE;
+    if (diffDays <= 3) return OverdueStatus.APPROACHING;
+    return OverdueStatus.NORMAL;
+  }
+
+  async findOverdueRequests() {
+    const requests = await this.requests.find({
+      where: [
+        { status: ServiceStatus.PENDING },
+        { status: ServiceStatus.ACCEPTED },
+        { status: ServiceStatus.IN_PROGRESS },
+      ],
+    });
+    return requests.filter(r => r.dueDate && this.calculateOverdueStatus(r) === OverdueStatus.OVERDUE);
+  }
+
+  async findApproachingRequests() {
+    const requests = await this.requests.find({
+      where: [
+        { status: ServiceStatus.PENDING },
+        { status: ServiceStatus.ACCEPTED },
+        { status: ServiceStatus.IN_PROGRESS },
+      ],
+    });
+    return requests.filter(r => r.dueDate && this.calculateOverdueStatus(r) === OverdueStatus.APPROACHING);
+  }
+
+  async countOverdue(): Promise<number> {
+    const requests = await this.findOverdueRequests();
+    return requests.length;
+  }
+
+  async countApproaching(): Promise<number> {
+    const requests = await this.findApproachingRequests();
+    return requests.length;
   }
 }

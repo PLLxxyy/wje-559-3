@@ -3,12 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Complaint } from '../models/complaint.entity';
 import { ServiceRequest } from '../models/service-request.entity';
+import { ServicesService } from './services.service';
 
 @Injectable()
 export class DashboardService {
   constructor(
     @InjectRepository(Complaint) private readonly complaints: Repository<Complaint>,
     @InjectRepository(ServiceRequest) private readonly services: Repository<ServiceRequest>,
+    private readonly servicesService: ServicesService,
   ) {}
 
   async overview() {
@@ -17,6 +19,8 @@ export class DashboardService {
       pendingComplaints: await this.complaints.count({ where: { status: 'SUBMITTED' as any } }),
       completedComplaints: await this.complaints.count({ where: { status: 'CLOSED' as any } }),
       serviceRequests: await this.services.count(),
+      overdueServiceRequests: await this.servicesService.countOverdue(),
+      approachingServiceRequests: await this.servicesService.countApproaching(),
     };
   }
 

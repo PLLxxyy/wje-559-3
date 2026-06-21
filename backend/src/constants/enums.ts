@@ -51,6 +51,12 @@ export enum ServiceStatus {
   REJECTED = 'REJECTED',
 }
 
+export enum OverdueStatus {
+  NORMAL = 'NORMAL',
+  APPROACHING = 'APPROACHING',
+  OVERDUE = 'OVERDUE',
+}
+
 export enum AnnouncementCategory {
   NOTICE = '通知',
   EVENT = '活动',

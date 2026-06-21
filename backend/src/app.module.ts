@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
+import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HealthController } from './controllers/health.controller';
 import { databaseConfig, ENTITIES } from './config/database.config';
@@ -19,6 +20,7 @@ import { ComplaintsService } from './services/complaints.service';
 import { DashboardService } from './services/dashboard.service';
 import { GridsService } from './services/grids.service';
 import { NotificationService } from './services/notification.service';
+import { OverdueNotificationService } from './services/overdue-notification.service';
 import { SeedService } from './services/seed.service';
 import { ServicesService } from './services/services.service';
 import { AuditMiddleware } from './middlewares/audit.middleware';
@@ -33,6 +35,7 @@ import { RoleMiddleware } from './middlewares/role.middleware';
     TypeOrmModule.forRoot(databaseConfig()),
     TypeOrmModule.forFeature(ENTITIES),
     JwtModule.register({ secret: jwtConfig().secret }),
+    ScheduleModule.forRoot(),
   ],
   providers: [
     AuthService,
@@ -43,6 +46,7 @@ import { RoleMiddleware } from './middlewares/role.middleware';
     DashboardService,
     AuditService,
     NotificationService,
+    OverdueNotificationService,
     SeedService,
     { provide: APP_GUARD, useClass: RateLimitMiddleware },
     { provide: APP_GUARD, useClass: AuthMiddleware },
