@@ -1,0 +1,10 @@
+{
+  "name": "communitygov",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix backend run build",
+    "start": "npm --prefix backend run start",
+    "start:dev": "npm --prefix backend run start:dev"
+  }
+}
