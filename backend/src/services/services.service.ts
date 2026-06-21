@@ -107,7 +107,7 @@ export class ServicesService {
     const diffMs = dueDate.getTime() - now.getTime();
     const diffDays = diffMs / (1000 * 60 * 60 * 24);
 
-    if (diffDays < 0) return OverdueStatus.OVERDUE;
+    if (diffDays <= 0) return OverdueStatus.OVERDUE;
     if (diffDays <= 3) return OverdueStatus.APPROACHING;
     return OverdueStatus.NORMAL;
   }
